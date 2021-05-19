@@ -9,13 +9,13 @@ var docClient = new AWS.DynamoDB.DocumentClient();
 
 var parseString = require('xml2js').parseString;
 
-const QUEUE_URL = "https://sqs.ap-northeast-1.amazonaws.com/098616358255/mws_notifications";
-const FIFO_QUEUE_URL = "https://sqs.ap-northeast-1.amazonaws.com/098616358255/mws_notifications.fifo";
+const QUEUE_URL = "";
+const FIFO_QUEUE_URL = "";
 const FIFO_MESSAGE_GROUP_ID = "FIFO_MWS_NOTIFICATIONS_GROUP";
 
-const SERVER_HOST = "dev.sellersket-price.com";
-const SERVER_HOOK_ROUTE = "/member/mws_notifications";
-const SERVER_HOOK_URL = "https://dev.sellersket-price.com/member/mws_notifications";
+const SERVER_HOST = "";
+const SERVER_HOOK_ROUTE = "";
+const SERVER_HOOK_URL = "";
 
 /**
  * Pass the data to send as `event.data`, and the request options as
