@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: Demonstrates using a built-in Node.js module to send Message from FIFO Queue.
+Description: Demonstrates using a built-in Node.js module to make an HTTPS request.
 Parameters: 
     IdentityNameParameter: 
       Type: String
@@ -11,7 +11,7 @@ Resources:
       Handler: index.handler
       Runtime: nodejs12.x
       CodeUri: .
-      Description: Demonstrates using a built-in Node.js module to send Message from FIFO Queue.
+      Description: Demonstrates using a built-in Node.js module to make an HTTPS request.
       MemorySize: 128
       Timeout: 60
       Policies:

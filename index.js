@@ -3,19 +3,15 @@
 const AWS = require('aws-sdk');
 var axios = require('axios');
 
-const SQS = new AWS.SQS({apiVersion: '2012-11-05'});
-const Lambda = new AWS.Lambda({apiVersion: '2015-03-31'});
 var docClient = new AWS.DynamoDB.DocumentClient();
 
-var parseString = require('xml2js').parseString;
+//const CURRENT_QUEUE = "3";
+//const CURRENT_QUEUE = "2";
+const CURRENT_QUEUE = "";
 
-const QUEUE_URL = "";
-const FIFO_QUEUE_URL = "";
-const FIFO_MESSAGE_GROUP_ID = "FIFO_MWS_NOTIFICATIONS_GROUP";
-
-const SERVER_HOST = "";
-const SERVER_HOOK_ROUTE = "";
-const SERVER_HOOK_URL = "";
+const SERVER_HOST = "sellersket-price.com";
+const SERVER_HOOK_ROUTE = "/member/mws_notifications";
+const SERVER_HOOK_URL = "https://sellersket-price.com/member/mws_notifications";
 
 /**
  * Pass the data to send as `event.data`, and the request options as
@@ -25,11 +21,15 @@ const SERVER_HOOK_URL = "";
  * Will succeed with the response body.
  */
 
+// Database Fields
+const QUEUE_TIME_COUNTER = CURRENT_QUEUE.length?"time_counter_" + CURRENT_QUEUE:"time_counter";
+const QUEUE_TIME_NOTIFICATION_TABLE = CURRENT_QUEUE.length?"mws_notifications_" + CURRENT_QUEUE:"mws_notifications";
+
 let notifications = [];
 let asins = [];
 let variable = {};
 const TIME_LIMIT = 10 * 1000;
-const NUMBER_LIMIT = 40;
+const NUMBER_LIMIT = 30;
 
 function getVarFromDB(type, init_value, callback){
     var params = {
@@ -97,7 +97,7 @@ function updateVars(type, value, callback){
 
 function getNotifications(callback){
     var params = {
-        TableName : "mws_notifications",
+        TableName : QUEUE_TIME_NOTIFICATION_TABLE,
         KeyConditionExpression: "#ty = :attr",
         ExpressionAttributeNames:{
             "#ty": "attr"
@@ -173,7 +173,7 @@ function getNotifications(callback){
 
 function updateNotifications(records, callback){
     var params = {
-        TableName : "mws_notifications",
+        TableName : QUEUE_TIME_NOTIFICATION_TABLE,
         Key:{
             "attr": "notifications"
         },
@@ -225,7 +225,6 @@ function sendNotification(notification) {
     const data = JSON.stringify(notification);
     let host = process.env.SERVER_HOST?process.env.SERVER_HOST:SERVER_HOST;
     let path = process.env.SERVER_HOOK_ROUTE?process.env.SERVER_HOOK_ROUTE:SERVER_HOOK_ROUTE;
-    console.log('host', host);
     const options = {
         "method": "post",
         "host": host,
@@ -238,7 +237,7 @@ function sendNotification(notification) {
 
     const req = https.request(options, (res) => {
         if (res.statusCode == 200) {
-            console.log('Send Notification Success :', data);
+            console.log('Send Notification Success :', data.length);
         }
     });
     req.on('error', (error) => {
@@ -248,10 +247,10 @@ function sendNotification(notification) {
     req.end();
 }
 
-async function sendNotificationWithAxios(datas) {
+function sendNotificationWithAxios(datas) {
     const data = JSON.stringify(datas);
     let hook_url = (process.env && process.env.SERVER_HOOK_URL)?process.env.SERVER_HOOK_URL:SERVER_HOOK_URL;
-    var config = {
+    let config = {
         method: 'post',
         url: hook_url,
         headers: {
@@ -260,16 +259,16 @@ async function sendNotificationWithAxios(datas) {
         data: data
     };
     console.log('hook_url', hook_url);
-    await axios(config)
+    axios(config)
         .then(function (response) {
-            console.log('Send Notification Success :', data);
+            console.log('Send Notification Success :', data.length);
         })
         .catch(function (error) {
             console.log('Send Notification Error :', error);
         });
 }
 
-async function process(message, index, message_count, callback) {
+function process(message, index, message_count, callback) {
     // TODO process message
     const notification = JSON.parse(message.body);
 
@@ -280,20 +279,15 @@ async function process(message, index, message_count, callback) {
 
     if((index + 1) === message_count){
         let now_time = new Date().getTime();
-        if((now_time - variable["time_counter"]) > TIME_LIMIT  || asins.length > NUMBER_LIMIT){
+        if((now_time - variable[QUEUE_TIME_COUNTER]) > TIME_LIMIT  || asins.length >= NUMBER_LIMIT){
             let send_data = notifications.map(notification => notification.notification);
             //sendNotification(send_data);
-            await sendNotificationWithAxios(send_data);
-            console.log(`Send Notifications Success =>  All: ${variable["all_message_count"]}, Sent: ${notifications.length}`, send_data);
-            variable["time_counter"] = now_time;
-            updateVars("time_counter", new Date().getTime(), ()=>{});
-            variable["all_message_count"] = 0;
-            updateVars("all_message_count", 0, ()=>{});
+            sendNotificationWithAxios(send_data);
+            console.log(`Send Notifications Success =>  Sent: ${notifications.length}`);
+            variable[QUEUE_TIME_COUNTER] = now_time;
+            updateVars(QUEUE_TIME_COUNTER, new Date().getTime(), ()=>{});
             updateNotifications([], () => { });
         } else {
-            variable["all_message_count"] += message_count;
-            console.log(`Send Notification Next =>  All Messages Count :${variable["all_message_count"]}`);
-            updateVars("all_message_count", variable["all_message_count"], ()=>{});
             updateNotifications(notifications, () => { });
         }
     }
@@ -306,15 +300,12 @@ async function process(message, index, message_count, callback) {
  }
  
 exports.handler = (event, context, callback) => {
-        getVarFromDB("time_counter", new Date().getTime(), function () {
-            getVarFromDB("all_message_count", 0, function () {
-                getNotifications(function () {
-                    console.log(`Send Notifications Start =>  From: ${variable["time_counter"]}, All Messages Count: ${variable["all_message_count"]}, Messages Length: ${notifications.length}`);
-                    let messageCount = event.Records.length;
-                    event.Records.map(async (record, index) => {
-                        await process(record, index, messageCount, callback);
-                    })
-                });
+        getVarFromDB(QUEUE_TIME_COUNTER, new Date().getTime(), function () {
+            getNotifications(function () {
+                let messageCount = event.Records.length;
+                event.Records.map((record, index) => {
+                    process(record, index, messageCount, callback);
+                })
             });
         });
 
